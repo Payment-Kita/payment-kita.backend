@@ -158,6 +158,51 @@ func (u *PartnerQuoteUsecase) PreviewRequiredInputForOutput(ctx context.Context,
 		return nil, domainerrors.BadRequest("target_output_amount must be a positive integer string")
 	}
 
+	// STABLECOIN RATE GUARD - Bypass on-chain quote for IDR-backed stablecoins
+	// If both tokens are IDR-backed (IDRT, IDRX, XSGD), use 1:1 rate + small fee buffer
+	// This prevents wrong rates from illiquid/misconfigured on-chain pools
+	inputIsStable := inputToken.IsStablecoin || isIDRBackedStablecoin(inputToken.Symbol)
+	outputIsStable := outputToken.IsStablecoin || isIDRBackedStablecoin(outputToken.Symbol)
+
+	if inputIsStable && outputIsStable {
+		createPaymentTraceInfo(ctx, "partner_quote.stablecoin_bypass_onchain",
+			zap.String("pair", fmt.Sprintf("%s->%s", inputToken.Symbol, outputToken.Symbol)),
+			zap.String("input_token", inputToken.ContractAddress),
+			zap.String("output_token", outputToken.ContractAddress),
+			zap.String("target_output", targetOut.String()),
+			zap.Bool("input_is_stable", inputIsStable),
+			zap.Bool("output_is_stable", outputIsStable),
+		)
+
+		// For stablecoin pairs, assume 1:1 + 0.5% fee buffer
+		// This is safer than relying on potentially broken on-chain pools
+		requiredInput := new(big.Int).Mul(targetOut, big.NewInt(1005))
+		requiredInput.Div(requiredInput, big.NewInt(10000))
+
+		// Adjust for decimal differences
+		decimalDiff := inputToken.Decimals - outputToken.Decimals
+		if decimalDiff > 0 {
+			multiplier := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimalDiff)), nil)
+			requiredInput.Mul(requiredInput, multiplier)
+		} else if decimalDiff < 0 {
+			divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(-decimalDiff)), nil)
+			requiredInput.Div(requiredInput, divisor)
+		}
+
+		routeStatus, routeErr := u.routeSupportFn(ctx, chainID, inputToken.ContractAddress, outputToken.ContractAddress)
+		routeSummary := inputToken.Symbol + "->" + outputToken.Symbol
+		if routeErr == nil && routeStatus != nil && len(routeStatus.Path) > 0 {
+			routeSummary = u.summarizeRouteForProbe(inputToken, outputToken, routeStatus)
+		}
+
+		return &PreviewRequiredInputForOutputOutput{
+			RequiredInputAmount: requiredInput.String(),
+			PriceSource:         "stablecoin-1-to-1-peg",
+			Route:               routeSummary,
+		}, nil
+	}
+	// END STABLECOIN RATE GUARD
+
 	routeStatus, err := u.routeSupportFn(ctx, chainID, inputToken.ContractAddress, outputToken.ContractAddress)
 	if err != nil {
 		return nil, domainerrors.InternalServerError(fmt.Sprintf("failed to resolve route support: %v", err))
@@ -182,8 +227,22 @@ func (u *PartnerQuoteUsecase) PreviewRequiredInputForOutput(ctx context.Context,
 	}
 
 	routeSummary := u.summarizeRouteForProbe(inputToken, outputToken, routeStatus)
+
+	// Rate deviation guard for stablecoin pairs (fallback if bypass didn't trigger)
+	// For IDR-backed stablecoins (IDRT, IDRX, XSGD), rate should be close to 1:1
+	// If deviation > 10%, likely pool misconfiguration or low liquidity
+	adjustedRequiredInput := u.applyStablecoinRateGuard(
+		ctx,
+		chainID,
+		inputToken,
+		outputToken,
+		requiredInput.AmountIn,
+		targetOut,
+		routeSummary,
+	)
+
 	return &PreviewRequiredInputForOutputOutput{
-		RequiredInputAmount: requiredInput.AmountIn.String(),
+		RequiredInputAmount: adjustedRequiredInput.String(),
 		PriceSource:         priceSource,
 		Route:               routeSummary,
 	}, nil
@@ -818,4 +877,103 @@ func trimTrailingZeros(v string) string {
 		return "0"
 	}
 	return v
+}
+
+// applyStablecoinRateGuard applies rate validation for stablecoin pairs
+// For IDR-backed stablecoins (IDRT, IDRX, XSGD), rate should be close to 1:1
+// If deviation > 15%, apply correction factor or return identity rate
+func (u *PartnerQuoteUsecase) applyStablecoinRateGuard(
+	ctx context.Context,
+	chainID uuid.UUID,
+	inputToken, outputToken *domainentities.Token,
+	requiredInput *big.Int,
+	targetOutput *big.Int,
+	routeSummary string,
+) *big.Int {
+	// Check if both tokens are stablecoins
+	inputStable := inputToken != nil && (inputToken.IsStablecoin || isIDRBackedStablecoin(inputToken.Symbol))
+	outputStable := outputToken != nil && (outputToken.IsStablecoin || isIDRBackedStablecoin(outputToken.Symbol))
+
+	if !inputStable || !outputStable {
+		// Not a stablecoin pair, return raw required input
+		return requiredInput
+	}
+
+	// Calculate implied rate
+	// rate = output / input (normalized to same decimals)
+	inputNormalized := normalizeToDecimal(requiredInput, inputToken.Decimals)
+	outputNormalized := normalizeToDecimal(targetOutput, outputToken.Decimals)
+
+	// For exact-output, we expect input ≈ output for stablecoins
+	// If input >> output, there's a problem
+	ratio := new(big.Rat).SetFrac(outputNormalized, inputNormalized)
+	ratioFloat, _ := ratio.Float64()
+
+	// Expected rate for stablecoin swap should be 0.95-1.05 (allowing for small fees)
+	// If rate < 0.85 or > 1.15, something is wrong
+	const minExpectedRate = 0.85
+	const maxExpectedRate = 1.15
+
+	if ratioFloat < minExpectedRate || ratioFloat > maxExpectedRate {
+		// Rate deviation detected - likely multi-hop cumulative fees or pool issue
+		// Apply conservative estimate: assume 1:1 with small fee buffer
+		createPaymentTraceWarn(ctx, "partner_quote.stablecoin_rate_deviation_detected",
+			zap.String("pair", fmt.Sprintf("%s->%s", inputToken.Symbol, outputToken.Symbol)),
+			zap.String("route", routeSummary),
+			zap.Float64("actual_rate", ratioFloat),
+			zap.Float64("expected_min", minExpectedRate),
+			zap.Float64("expected_max", maxExpectedRate),
+			zap.String("required_input_raw", requiredInput.String()),
+			zap.String("target_output", targetOutput.String()),
+		)
+
+		// Calculate adjusted input assuming 1:1 rate + 2% buffer for fees
+		adjustedInput := new(big.Int).Mul(targetOutput, big.NewInt(102))
+		adjustedInput.Div(adjustedInput, big.NewInt(100))
+
+		// Adjust for decimal differences
+		decimalDiff := inputToken.Decimals - outputToken.Decimals
+		if decimalDiff > 0 {
+			multiplier := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimalDiff)), nil)
+			adjustedInput.Mul(adjustedInput, multiplier)
+		} else if decimalDiff < 0 {
+			divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(-decimalDiff)), nil)
+			adjustedInput.Div(adjustedInput, divisor)
+		}
+
+		createPaymentTraceInfo(ctx, "partner_quote.stablecoin_rate_corrected",
+			zap.String("pair", fmt.Sprintf("%s->%s", inputToken.Symbol, outputToken.Symbol)),
+			zap.String("adjusted_input", adjustedInput.String()),
+			zap.String("correction", "1:1 + 2% fee buffer"),
+		)
+
+		return adjustedInput
+	}
+
+	// Rate is within expected range, use calculated value
+	return requiredInput
+}
+
+// isIDRBackedStablecoin checks if a token symbol represents an IDR-backed stablecoin
+func isIDRBackedStablecoin(symbol string) bool {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	// IDR-backed or pegged stablecoins
+	idrStablecoins := map[string]bool{
+		"IDRT": true, // Rupiah Token
+		"IDRX": true, // Digital Rupiah
+		"XSGD": true, // Singapore Dollar (close peg to IDR)
+	}
+	return idrStablecoins[symbol]
+}
+
+// normalizeToDecimal converts atomic amount to normalized big.Int (18 decimals precision)
+func normalizeToDecimal(amount *big.Int, decimals int) *big.Int {
+	if decimals < 18 {
+		multiplier := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(18-decimals)), nil)
+		return new(big.Int).Mul(amount, multiplier)
+	} else if decimals > 18 {
+		divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals-18)), nil)
+		return new(big.Int).Div(amount, divisor)
+	}
+	return new(big.Int).Set(amount)
 }

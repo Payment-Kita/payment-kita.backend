@@ -53,6 +53,8 @@ type CreatePaymentOutput struct {
 	Amount                   string    `json:"amount"`
 	InvoiceCurrency          string    `json:"invoice_currency"`
 	InvoiceAmount            string    `json:"invoice_amount"`
+	SettlementAmount         string    `json:"settlement_amount"`
+	SettlementAmountAtomic   string    `json:"settlement_amount_atomic"`
 	PayerSelectedChain       string    `json:"payer_selected_chain"`
 	PayerSelectedToken       string    `json:"payer_selected_token"`
 	PayerSelectedTokenSymbol string    `json:"payer_selected_token_symbol"`
@@ -73,7 +75,19 @@ type CreatePaymentOutput struct {
 	ExpireTime               time.Time `json:"expire_time"`
 	PaymentURL               string    `json:"payment_url"`
 	PaymentCode              string    `json:"payment_code"`
-	PaymentInstruction       struct {
+	FeeBreakdown             struct {
+		PlatformFee        string `json:"platform_fee"`
+		BridgeFee          string `json:"bridge_fee"`
+		TotalFee           string `json:"total_fee"`
+		TotalFeePercentage string `json:"total_fee_percentage"`
+	} `json:"fee_breakdown"`
+	RouteInfo struct {
+		Path        []string `json:"path"`
+		HopCount    int      `json:"hop_count"`
+		IsDirect    bool     `json:"is_direct"`
+		RouteSource string   `json:"route_source"`
+	} `json:"route_info"`
+	PaymentInstruction struct {
 		ChainID     string `json:"chain_id"`
 		To          string `json:"to,omitempty"`
 		Value       string `json:"value,omitempty"`
@@ -253,6 +267,7 @@ func (u *CreatePaymentUsecase) CreatePayment(ctx context.Context, input *CreateP
 	)
 
 	var quoteOut *CreatePartnerQuoteOutput
+	var invoiceAtomic string
 	quoteStartedAt := time.Now()
 	quoteStageTimeout := createPaymentStageTimeoutFromEnv("CREATE_PAYMENT_QUOTE_STAGE_TIMEOUT_MS", defaultCreatePaymentQuoteStageTimeout)
 	quoteCtx, quoteCancel := context.WithTimeout(ctx, createPaymentStageTimeoutFromEnv("CREATE_PAYMENT_QUOTE_STAGE_TIMEOUT_MS", defaultCreatePaymentQuoteStageTimeout))
@@ -264,8 +279,11 @@ func (u *CreatePaymentUsecase) CreatePayment(ctx context.Context, input *CreateP
 	switch pricingType {
 	case CreatePaymentPricingTypeInvoiceCurrency:
 		quoteOut, err = u.createInvoiceCurrencyQuote(quoteCtx, merchantID, chainCAIP2, selectedToken, settlement, strings.TrimSpace(input.RequestedAmount), walletAddress, expiresAt)
+		// Capture invoiceAtomic for response
+		invoiceAtomic, _ = convertToSmallestUnit(strings.TrimSpace(input.RequestedAmount), settlement.InvoiceToken.Decimals)
 	default:
 		quoteOut, err = u.createSyntheticSelectedTokenQuote(quoteCtx, merchantID, chainCAIP2, selectedToken, pricingType, strings.TrimSpace(input.RequestedAmount), settlement, expiresAt)
+		invoiceAtomic = strings.TrimSpace(input.RequestedAmount)
 	}
 	if err != nil {
 		createPaymentTraceWarn(ctx, "create_payment.quote_stage_failed",
@@ -328,6 +346,8 @@ func (u *CreatePaymentUsecase) CreatePayment(ctx context.Context, input *CreateP
 		Amount:                   sessionOut.Amount,
 		InvoiceCurrency:          settlement.InvoiceToken.Symbol,
 		InvoiceAmount:            strings.TrimSpace(input.RequestedAmount),
+		SettlementAmount:         strings.TrimSpace(input.RequestedAmount), // Net amount merchant receives (same as invoice for now)
+		SettlementAmountAtomic:   invoiceAtomic,                            // Atomic representation
 		PayerSelectedChain:       chainCAIP2,
 		PayerSelectedToken:       selectedToken.ContractAddress,
 		PayerSelectedTokenSymbol: selectedToken.Symbol,
@@ -349,6 +369,20 @@ func (u *CreatePaymentUsecase) CreatePayment(ctx context.Context, input *CreateP
 		PaymentURL:               sessionOut.PaymentURL,
 		PaymentCode:              sessionOut.PaymentCode,
 	}
+
+	// Populate fee breakdown (estimate based on quote source)
+	// For stablecoin pairs, fees should be minimal (~0.3-1% per hop)
+	feeEstimate := calculateFeeEstimate(quoteOut.QuotedAmount, selectedToken.Decimals, quoteOut.PriceSource)
+	out.FeeBreakdown.PlatformFee = feeEstimate.platformFee
+	out.FeeBreakdown.BridgeFee = feeEstimate.bridgeFee
+	out.FeeBreakdown.TotalFee = feeEstimate.totalFee
+	out.FeeBreakdown.TotalFeePercentage = feeEstimate.totalFeePercentage
+
+	// Populate route info
+	out.RouteInfo.Path = parseRoutePath(quoteOut.Route)
+	out.RouteInfo.HopCount = len(out.RouteInfo.Path) - 1
+	out.RouteInfo.IsDirect = len(out.RouteInfo.Path) <= 2
+	out.RouteInfo.RouteSource = quoteOut.PriceSource
 	out.PaymentInstruction.ChainID = sessionOut.PaymentInstruction.ChainID
 	out.PaymentInstruction.To = sessionOut.PaymentInstruction.To
 	out.PaymentInstruction.Value = sessionOut.PaymentInstruction.Value
@@ -1210,4 +1244,60 @@ func quoteRateFromAtomicAmounts(quotedAmount string, quotedDecimals int, invoice
 		return "0"
 	}
 	return formatNormalizedTokenRatio(quoted, quotedDecimals, invoice, invoiceDecimals, 18)
+}
+
+// calculateFeeEstimate estimates fees based on quoted amount and route
+func calculateFeeEstimate(quotedAmountAtomic string, decimals int, priceSource string) (feeEstimate struct {
+	platformFee        string
+	bridgeFee          string
+	totalFee           string
+	totalFeePercentage string
+}) {
+	// Default estimates (will be refined based on actual fee calculation)
+	// For stablecoin pairs with multi-hop, estimate ~0.5-1% total fees
+	quotedAmount, ok := new(big.Int).SetString(strings.TrimSpace(quotedAmountAtomic), 10)
+	if !ok || quotedAmount == nil || quotedAmount.Sign() <= 0 {
+		return
+	}
+
+	// Estimate platform fee: 0.3% (typical Uniswap V3 fee)
+	platformFeeBps := big.NewInt(30) // 0.3%
+	platformFee := new(big.Int).Mul(quotedAmount, platformFeeBps)
+	platformFee.Div(platformFee, big.NewInt(10000))
+
+	// Estimate bridge fee: 0.1-0.5% depending on bridge
+	bridgeFeeBps := big.NewInt(20) // 0.2%
+	if strings.Contains(strings.ToLower(priceSource), "cross-chain") {
+		bridgeFeeBps = big.NewInt(30) // 0.3% for cross-chain
+	}
+	bridgeFee := new(big.Int).Mul(quotedAmount, bridgeFeeBps)
+	bridgeFee.Div(bridgeFee, big.NewInt(10000))
+
+	// Total fee
+	totalFee := new(big.Int).Add(platformFee, bridgeFee)
+	totalFeeBps := new(big.Int).Add(platformFeeBps, bridgeFeeBps)
+
+	// Convert to decimal string
+	feeEstimate.platformFee = smallestUnitToDecimalString(platformFee.String(), decimals)
+	feeEstimate.bridgeFee = smallestUnitToDecimalString(bridgeFee.String(), decimals)
+	feeEstimate.totalFee = smallestUnitToDecimalString(totalFee.String(), decimals)
+	feeEstimate.totalFeePercentage = fmt.Sprintf("%.2f%%", float64(totalFeeBps.Int64())/100.0)
+
+	return
+}
+
+// parseRoutePath parses route string (e.g., "IDRT->USDC->IDRX") into path array
+func parseRoutePath(route string) []string {
+	if route == "" {
+		return []string{}
+	}
+	parts := strings.Split(route, "->")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		cleaned := strings.TrimSpace(part)
+		if cleaned != "" {
+			result = append(result, cleaned)
+		}
+	}
+	return result
 }
