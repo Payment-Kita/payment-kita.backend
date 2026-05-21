@@ -8,7 +8,7 @@ import (
 )
 
 type PaymentRequest struct {
-	ID            uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ID            uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v7()"`
 	MerchantID    uuid.UUID `gorm:"type:uuid;not null;index"`
 	ChainID       uuid.UUID `gorm:"type:uuid;not null;index"`
 	TokenID       uuid.UUID `gorm:"type:uuid;not null;index"`
@@ -29,7 +29,7 @@ type PaymentRequest struct {
 }
 
 type BackgroundJob struct {
-	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ID           uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v7()"`
 	JobType      string    `gorm:"type:varchar(50);not null;index"`
 	Payload      string    `gorm:"type:jsonb;not null"`
 	Status       string    `gorm:"type:varchar(50);not null;index"`

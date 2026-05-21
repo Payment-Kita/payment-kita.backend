@@ -8,7 +8,7 @@ import (
 )
 
 type ApiKey struct {
-	ID              uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ID              uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v7()"`
 	UserID          uuid.UUID `gorm:"type:uuid;not null;index"`
 	Name            string    `gorm:"type:varchar(100);not null"`
 	KeyPrefix       string    `gorm:"type:varchar(20);not null"`
