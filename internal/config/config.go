@@ -31,6 +31,8 @@ type DatabaseConfig struct {
 	Password string
 	DBName   string
 	SSLMode  string
+	DBApp    string
+	DBLegacy string
 }
 
 // URL returns the database connection URL
@@ -85,6 +87,8 @@ func Load() *Config {
 			Password: getEnv("DB_PASSWORD", "postgres"),
 			DBName:   getEnv("DB_NAME", "paymentkita"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+			DBApp:    getEnv("DB_APP", ""),
+			DBLegacy: getEnv("DB_LEGACY", ""),
 		},
 		Redis: RedisConfig{
 			URL:      getEnv("REDIS_URL", "redis://localhost:6379"),

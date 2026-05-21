@@ -43,6 +43,9 @@ migrate-create:
 migrate-force:
 	migrate -path migrations -database "$(DATABASE_URL)" force $(version)
 
+migrate-legacy:
+	go run ./cmd/db-migrate-legacy
+
 
 
 # Linting
