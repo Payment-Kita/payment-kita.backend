@@ -119,14 +119,25 @@ func (r *TokenRepository) GetTokensByChain(ctx context.Context, chainID uuid.UUI
 	var ms []models.Token
 	var totalCount int64
 
-	query := r.db.WithContext(ctx).Model(&models.Token{}).
-		Where("chain_id = ? AND is_active = ?", chainID, true)
-
-	if err := query.Count(&totalCount).Error; err != nil {
+	// Count unique contract addresses per chain
+	if err := r.db.WithContext(ctx).Model(&models.Token{}).
+		Where("chain_id = ? AND is_active = ? AND deleted_at IS NULL", chainID, true).
+		Distinct("address").
+		Count(&totalCount).Error; err != nil {
 		return nil, 0, err
 	}
 
-	query = query.Preload("Chain").Order("symbol")
+	// Use a subquery to get the latest token for each contract address
+	// This prevents duplicates when multiple tokens have the same contract address
+	query := r.db.WithContext(ctx).Table("tokens t1").
+		Joins(`JOIN (
+			SELECT address, MAX(updated_at) as max_updated_at
+			FROM tokens
+			WHERE chain_id = ? AND is_active = ? AND deleted_at IS NULL
+			GROUP BY address
+		) t2 ON t1.address = t2.address AND t1.updated_at = t2.max_updated_at`, chainID, true).
+		Preload("Chain").
+		Order("t1.symbol")
 
 	if pagination.Limit > 0 {
 		query = query.Limit(pagination.Limit).Offset(pagination.CalculateOffset())
@@ -149,21 +160,50 @@ func (r *TokenRepository) GetAllTokens(ctx context.Context, chainID *uuid.UUID, 
 	var ms []models.Token
 	var totalCount int64
 
-	query := r.db.WithContext(ctx).Model(&models.Token{})
+	// Build base conditions
+	conditions := "deleted_at IS NULL"
+	args := []interface{}{}
 
 	if chainID != nil {
-		query = query.Where("chain_id = ?", *chainID)
-	}
-	if search != nil && *search != "" {
-		term := "%" + *search + "%"
-		query = query.Where("symbol ILIKE ? OR name ILIKE ? OR address ILIKE ?", term, term, term)
+		conditions += " AND chain_id = ?"
+		args = append(args, *chainID)
 	}
 
-	if err := query.Count(&totalCount).Error; err != nil {
+	// Count unique contract addresses (with optional chain filter)
+	if err := r.db.WithContext(ctx).Model(&models.Token{}).
+		Where(conditions, args...).
+		Distinct("address").
+		Count(&totalCount).Error; err != nil {
 		return nil, 0, err
 	}
 
-	query = query.Preload("Chain").Order("symbol")
+	// Build search conditions
+	searchConditions := conditions
+	searchArgs := args
+
+	if search != nil && *search != "" {
+		term := "%" + *search + "%"
+		searchConditions += " AND (symbol ILIKE ? OR name ILIKE ? OR address ILIKE ?)"
+		searchArgs = append(searchArgs, term, term, term)
+	}
+
+	// Use a subquery to get the latest token for each contract address
+	// This prevents duplicates when multiple tokens have the same contract address
+	query := r.db.WithContext(ctx).Table("tokens t1").
+		Joins(`JOIN (
+			SELECT address, MAX(updated_at) as max_updated_at
+			FROM tokens
+			WHERE `+conditions+`
+			GROUP BY address
+		) t2 ON t1.address = t2.address AND t1.updated_at = t2.max_updated_at`, args...)
+
+	// Apply search filter to the main query
+	if search != nil && *search != "" {
+		term := "%" + *search + "%"
+		query = query.Where("t1.symbol ILIKE ? OR t1.name ILIKE ? OR t1.address ILIKE ?", term, term, term)
+	}
+
+	query = query.Preload("Chain").Order("t1.symbol")
 
 	if pagination.Limit > 0 {
 		query = query.Limit(pagination.Limit).Offset(pagination.CalculateOffset())

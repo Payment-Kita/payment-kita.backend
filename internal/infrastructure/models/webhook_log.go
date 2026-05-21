@@ -7,7 +7,7 @@ import (
 )
 
 type WebhookLog struct {
-	ID             uuid.UUID  `gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ID             uuid.UUID  `gorm:"type:uuid;primaryKey;default:uuid_generate_v7()"`
 	MerchantID     uuid.UUID  `gorm:"type:uuid;not null;index"`
 	PaymentID      uuid.UUID  `gorm:"type:uuid;not null"`
 	EventType      string     `gorm:"type:varchar(50);not null"`

@@ -8,7 +8,7 @@ import (
 )
 
 type Wallet struct {
-	ID         uuid.UUID  `gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ID         uuid.UUID  `gorm:"type:uuid;primaryKey;default:uuid_generate_v7()"`
 	UserID     *uuid.UUID `gorm:"type:uuid;index"`          // Nullable
 	MerchantID *uuid.UUID `gorm:"type:uuid;index"`          // Nullable
 	ChainID    uuid.UUID  `gorm:"type:uuid;not null;index"` // FK to chains.id
