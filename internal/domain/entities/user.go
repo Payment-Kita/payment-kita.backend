@@ -51,9 +51,12 @@ type CreateUserInput struct {
 	WalletSignature string `json:"walletSignature" binding:"required"`
 
 	// Merchant fields (unified registration)
-	IsMerchant   bool   `json:"isMerchant"`
-	BusinessName string `json:"businessName"`
-	MerchantType string `json:"merchantType"`
+	IsMerchant          bool   `json:"isMerchant"`
+	BusinessName        string `json:"businessName"`
+	BusinessCategory    string `json:"businessCategory"`
+	BusinessWebsite     string `json:"businessWebsite"`
+	BusinessDescription string `json:"businessDescription"`
+	MerchantType        string `json:"merchantType"` // Deprecated in favor of BusinessCategory but kept for compatibility
 }
 
 // LoginInput represents input for user login

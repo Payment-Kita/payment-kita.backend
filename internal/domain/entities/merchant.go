@@ -15,6 +15,9 @@ const (
 	MerchantTypeCorporate MerchantType = "CORPORATE"
 	MerchantTypeUMKM      MerchantType = "UMKM"
 	MerchantTypeRetail    MerchantType = "RETAIL"
+	MerchantTypeServices  MerchantType = "SERVICES"
+	MerchantTypeDigital   MerchantType = "DIGITAL"
+	MerchantTypeOther     MerchantType = "OTHER"
 )
 
 // MerchantStatus represents merchant verification status
@@ -35,6 +38,8 @@ type Merchant struct {
 	BusinessEmail      string         `json:"businessEmail"`
 	MerchantType       MerchantType   `json:"merchantType"`
 	Status             MerchantStatus `json:"status"`
+	BusinessWebsite    string         `json:"businessWebsite,omitempty"`
+	BusinessDescription string         `json:"businessDescription,omitempty"`
 	TaxID              null.String    `json:"taxId,omitempty"`
 	BusinessAddress    null.String    `json:"businessAddress,omitempty"`
 	Documents          null.JSON      `json:"documents,omitempty"`
