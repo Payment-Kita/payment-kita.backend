@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -141,12 +142,21 @@ func (u *AuthUsecase) Register(ctx context.Context, input *entities.CreateUserIn
 
 		// Create Merchant record if applicable
 		if input.IsMerchant {
+			// Map category to enum
+			merchantType := mapBusinessCategory(input.BusinessCategory)
+			if merchantType == entities.MerchantTypeOther && input.MerchantType != "" {
+				// Fallback to legacy field if provided and OTHER
+				merchantType = mapBusinessCategory(input.MerchantType)
+			}
+
 			merchant := &entities.Merchant{
-				UserID:        user.ID,
-				BusinessName:  input.BusinessName,
-				BusinessEmail: input.Email,
-				MerchantType:  entities.MerchantType(input.MerchantType),
-				Status:        entities.MerchantStatusPending,
+				UserID:             user.ID,
+				BusinessName:       input.BusinessName,
+				BusinessEmail:      input.Email,
+				MerchantType:       merchantType,
+				BusinessWebsite:    input.BusinessWebsite,
+				BusinessDescription: input.BusinessDescription,
+				Status:             entities.MerchantStatusPending,
 			}
 			if err := u.merchantRepo.Create(txCtx, merchant); err != nil {
 				return err
@@ -306,4 +316,23 @@ func (u *AuthUsecase) ChangePassword(ctx context.Context, userID uuid.UUID, inpu
 	}
 
 	return u.userRepo.UpdatePassword(ctx, userID, newPasswordHash)
+}
+
+func mapBusinessCategory(category string) entities.MerchantType {
+	switch strings.ToUpper(category) {
+	case "RETAIL":
+		return entities.MerchantTypeRetail
+	case "CORPORATE":
+		return entities.MerchantTypeCorporate
+	case "SERVICES":
+		return entities.MerchantTypeServices
+	case "DIGITAL":
+		return entities.MerchantTypeDigital
+	case "UMKM":
+		return entities.MerchantTypeUMKM
+	case "PARTNER":
+		return entities.MerchantTypePartner
+	default:
+		return entities.MerchantTypeOther
+	}
 }

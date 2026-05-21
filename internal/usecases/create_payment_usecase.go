@@ -914,7 +914,7 @@ func (u *CreatePaymentUsecase) solveRequiredInputForTargetOutput(
 		if quoteOut == nil {
 			return nil, "", "", domainerrors.InternalServerError("invalid temporary quote output")
 		}
-		if persistedQuote && quoteOut != nil {
+		if persistedQuote {
 			quoteID, parseErr := uuid.Parse(quoteOut.QuoteID)
 			if parseErr == nil {
 				_ = u.quoteRepo.UpdateStatus(ctx, quoteID, entities.PaymentQuoteStatusCancelled)
