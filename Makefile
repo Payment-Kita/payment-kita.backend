@@ -32,16 +32,16 @@ test-coverage:
 
 # Database
 migrate-up:
-	migrate -path migrations -database "$(DATABASE_URL)" up
+	$(GOBIN)/migrate -path migrations -database "$(DATABASE_URL)" up
 
 migrate-down:
-	migrate -path migrations -database "$(DATABASE_URL)" down 1
+	$(GOBIN)/migrate -path migrations -database "$(DATABASE_URL)" down 1
 
 migrate-create:
-	migrate create -ext sql -dir migrations -seq $(name)
+	$(GOBIN)/migrate create -ext sql -dir migrations -seq $(name)
 
 migrate-force:
-	migrate -path migrations -database "$(DATABASE_URL)" force $(version)
+	$(GOBIN)/migrate -path migrations -database "$(DATABASE_URL)" force $(version)
 
 
 
