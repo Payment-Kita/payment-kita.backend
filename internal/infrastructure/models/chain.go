@@ -9,7 +9,7 @@ import (
 
 type Chain struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:uuid_generate_v7()"`
-	NetworkID string    `gorm:"type:varchar(255);not null;uniqueIndex;column:chain_id"` // Mapped to chain_id column
+	NetworkID string    `gorm:"type:text;not null;uniqueIndex;column:chain_id"` // Mapped to chain_id column
 	// Namespace      string    `gorm:"-"` // Deprecated: Derived from Type
 	Name              string `gorm:"type:varchar(100);not null"`
 	ChainType         string `gorm:"type:varchar(50);not null;default:'EVM';column:type"`
