@@ -20,7 +20,7 @@ jobs:
     env:
       REMOTE_APP_DIR: ${{ secrets.REMOTE_APP_DIR != '' && secrets.REMOTE_APP_DIR || '~/app/payment-kita.backend' }}
       CONTAINER_NAME: ${{ secrets.CONTAINER_NAME != '' && secrets.CONTAINER_NAME || 'payment-kita.backend.container' }}
-      HOST_PORT: ${{ secrets.HOST_PORT != '' && secrets.HOST_PORT || '8082' }}
+      HOST_PORT: ${{ secrets.HOST_PORT != '' && secrets.HOST_PORT || '8083' }}
       CONTAINER_PORT: ${{ secrets.CONTAINER_PORT != '' && secrets.CONTAINER_PORT || '8080' }}
 
     steps:
