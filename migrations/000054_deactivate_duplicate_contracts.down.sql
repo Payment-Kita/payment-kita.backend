@@ -1,0 +1,1 @@
+-- Down migration: No-op. Deactivating duplicates is a data cleanup operation that should not be automatically reversed.
