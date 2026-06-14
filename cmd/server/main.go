@@ -69,7 +69,7 @@ func runMainProcess() error {
 	logger.Info(context.Background(), "Logger initialized", zap.String("env", cfg.Server.Env))
 
 	// Initialize Redis
-	if err := initRedis(cfg.Redis.URL, cfg.Redis.PASSWORD); err != nil {
+	if err := initRedis(cfg.Redis.URL, cfg.Redis.Username, cfg.Redis.PASSWORD); err != nil {
 		logger.Error(context.Background(), "Failed to initialize Redis", zap.Error(err))
 		return fmt.Errorf("failed to initialize redis: %w", err)
 	}

@@ -14,10 +14,14 @@ var pingClient = func(ctx context.Context, c *redis.Client) error {
 }
 
 // Init initializes the Redis client
-func Init(url, password string) error {
+func Init(url, username, password string) error {
 	opts, err := redis.ParseURL(url)
 	if err != nil {
 		return err
+	}
+
+	if username != "" {
+		opts.Username = username
 	}
 
 	if password != "" {

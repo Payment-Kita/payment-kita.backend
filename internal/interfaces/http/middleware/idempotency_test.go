@@ -36,7 +36,7 @@ func TestIdempotencyMiddleware_PreventsDuplicateRequests(t *testing.T) {
 	defer mr.Close()
 
 	// Initialize redis with miniredis
-	err = redis.Init("redis://"+mr.Addr(), "")
+	err = redis.Init("redis://"+mr.Addr(), "", "")
 	assert.NoError(t, err)
 
 	router := setupTestRouter()
@@ -78,7 +78,7 @@ func TestIdempotencyMiddleware_AllowsDifferentKeys(t *testing.T) {
 	defer mr.Close()
 
 	// Initialize redis with miniredis
-	err = redis.Init("redis://"+mr.Addr(), "")
+	err = redis.Init("redis://"+mr.Addr(), "", "")
 	assert.NoError(t, err)
 
 	router := setupTestRouter()
@@ -113,7 +113,7 @@ func TestIdempotencyMiddleware_NoKeyContinuesNormally(t *testing.T) {
 	defer mr.Close()
 
 	// Initialize redis with miniredis
-	err = redis.Init("redis://"+mr.Addr(), "")
+	err = redis.Init("redis://"+mr.Addr(), "", "")
 	assert.NoError(t, err)
 
 	router := setupTestRouter()
@@ -137,7 +137,7 @@ func TestIdempotencyMiddleware_RejectsTooLongKey(t *testing.T) {
 	defer mr.Close()
 
 	// Initialize redis with miniredis
-	err = redis.Init("redis://"+mr.Addr(), "")
+	err = redis.Init("redis://"+mr.Addr(), "", "")
 	assert.NoError(t, err)
 
 	router := setupTestRouter()

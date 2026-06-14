@@ -35,12 +35,13 @@ type DatabaseConfig struct {
 
 // URL returns the database connection URL
 func (c DatabaseConfig) URL() string {
-	return "postgres://" + c.User + ":" + c.Password + "@" + c.Host + ":" + strconv.Itoa(c.Port) + "/" + c.DBName + "?sslmode=" + c.SSLMode + "&prepare_threshold=0"
+	return "postgres://" + c.User + ":" + c.Password + "@" + c.Host + ":" + strconv.Itoa(c.Port) + "/" + c.DBName + "?sslmode=" + c.SSLMode
 }
 
 // RedisConfig holds Redis configuration
 type RedisConfig struct {
 	URL      string
+	Username string
 	PASSWORD string
 }
 
@@ -88,6 +89,7 @@ func Load() *Config {
 		},
 		Redis: RedisConfig{
 			URL:      getEnv("REDIS_URL", "redis://localhost:6379"),
+			Username: getEnv("REDIS_USERNAME", ""),
 			PASSWORD: getEnv("REDIS_PASSWORD", ""),
 		},
 		RabbitMQ: RabbitMQConfig{

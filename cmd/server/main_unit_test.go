@@ -80,7 +80,7 @@ func TestRunMainProcess_RedisInitError(t *testing.T) {
 	loadDotenv = func(...string) error { return nil }
 	loadCfg = baseTestConfig
 	initLog = plog.Init
-	initRedis = func(string, string) error { return errors.New("redis down") }
+	initRedis = func(string, string, string) error { return errors.New("redis down") }
 
 	err := runMainProcess()
 	if err == nil {
@@ -94,7 +94,7 @@ func TestRunMainProcess_DBOpenError(t *testing.T) {
 	loadDotenv = func(...string) error { return nil }
 	loadCfg = baseTestConfig
 	initLog = plog.Init
-	initRedis = func(string, string) error { return nil }
+	initRedis = func(string, string, string) error { return nil }
 	openDB = func(string) (*gorm.DB, error) { return nil, errors.New("db open failed") }
 
 	err := runMainProcess()
@@ -109,7 +109,7 @@ func TestRunMainProcess_SessionStoreError(t *testing.T) {
 	loadDotenv = func(...string) error { return nil }
 	loadCfg = baseTestConfig
 	initLog = plog.Init
-	initRedis = func(string, string) error { return nil }
+	initRedis = func(string, string, string) error { return nil }
 	openDB = func(string) (*gorm.DB, error) {
 		return gorm.Open(sqlite.Open("file:main_session_err?mode=memory&cache=shared"), &gorm.Config{})
 	}
@@ -127,7 +127,7 @@ func TestRunMainProcess_ServerRunError(t *testing.T) {
 	loadDotenv = func(...string) error { return nil }
 	loadCfg = baseTestConfig
 	initLog = plog.Init
-	initRedis = func(string, string) error { return nil }
+	initRedis = func(string, string, string) error { return nil }
 	openDB = func(string) (*gorm.DB, error) {
 		return gorm.Open(sqlite.Open("file:main_server_err?mode=memory&cache=shared"), &gorm.Config{})
 	}
@@ -146,7 +146,7 @@ func TestRunMainProcess_SuccessPath(t *testing.T) {
 	loadDotenv = func(...string) error { return nil }
 	loadCfg = baseTestConfig
 	initLog = plog.Init
-	initRedis = func(string, string) error { return nil }
+	initRedis = func(string, string, string) error { return nil }
 	openDB = func(string) (*gorm.DB, error) {
 		return gorm.Open(sqlite.Open("file:main_success?mode=memory&cache=shared"), &gorm.Config{})
 	}
@@ -164,7 +164,7 @@ func TestRunMainProcess_SuccessPath_WithDotenvLoadError(t *testing.T) {
 	loadDotenv = func(...string) error { return errors.New("dotenv missing") }
 	loadCfg = baseTestConfig
 	initLog = plog.Init
-	initRedis = func(string, string) error { return nil }
+	initRedis = func(string, string, string) error { return nil }
 	openDB = func(string) (*gorm.DB, error) {
 		return gorm.Open(sqlite.Open("file:main_success_dotenv_error?mode=memory&cache=shared"), &gorm.Config{})
 	}
@@ -213,7 +213,7 @@ func TestRunMainProcess_ProductionModeAndPingWarnPath(t *testing.T) {
 		return cfg
 	}
 	initLog = plog.Init
-	initRedis = func(string, string) error { return nil }
+	initRedis = func(string, string, string) error { return nil }
 	openDB = func(string) (*gorm.DB, error) {
 		db, err := gorm.Open(sqlite.Open("file:main_prod_ping_warn?mode=memory&cache=shared"), &gorm.Config{})
 		if err != nil {
@@ -242,7 +242,7 @@ func TestRunMainProcess_GracefulShutdownSignalBranch(t *testing.T) {
 	loadDotenv = func(...string) error { return nil }
 	loadCfg = baseTestConfig
 	initLog = plog.Init
-	initRedis = func(string, string) error { return nil }
+	initRedis = func(string, string, string) error { return nil }
 	openDB = func(string) (*gorm.DB, error) {
 		return gorm.Open(sqlite.Open("file:main_graceful_signal?mode=memory&cache=shared"), &gorm.Config{})
 	}
@@ -264,7 +264,7 @@ func TestRunMainProcess_GetStdDBError(t *testing.T) {
 	loadDotenv = func(...string) error { return nil }
 	loadCfg = baseTestConfig
 	initLog = plog.Init
-	initRedis = func(string, string) error { return nil }
+	initRedis = func(string, string, string) error { return nil }
 	openDB = func(string) (*gorm.DB, error) {
 		return gorm.Open(sqlite.Open("file:main_getstdb_error?mode=memory&cache=shared"), &gorm.Config{})
 	}

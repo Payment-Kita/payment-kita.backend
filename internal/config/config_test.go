@@ -16,7 +16,7 @@ func TestDatabaseConfig_URL(t *testing.T) {
 		DBName:   "db",
 		SSLMode:  "disable",
 	}
-	assert.Equal(t, "postgres://user:pass@localhost:5432/db?sslmode=disable&prepare_threshold=0", cfg.URL())
+	assert.Equal(t, "postgres://user:pass@localhost:5432/db?sslmode=disable", cfg.URL())
 }
 
 func TestLoad_ConfigFromEnv(t *testing.T) {
