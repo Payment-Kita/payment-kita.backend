@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  payment-kita-backend:
+    build: .
+    container_name: payment-kita.backend.container
+    restart: always
+    ports:
+      - "8083:8080"
+    env_file:
+      - .env
+    networks:
+      - excitech-net
+
+networks:
+  excitech-net:
+    external: true

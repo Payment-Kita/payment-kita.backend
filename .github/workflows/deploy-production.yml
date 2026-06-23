@@ -56,16 +56,8 @@ jobs:
             git checkout main
             git pull origin main
             
-            docker stop '$CONTAINER_NAME' || true
-            docker rm '$CONTAINER_NAME' || true
-            
-            docker build -t '$CONTAINER_NAME:latest' .
-            
-            ENV_FILE_ARG=\"\"
-            if [ -f .env ]; then
-              ENV_FILE_ARG=\"--env-file .env\"
-            fi
-            
-            docker run -d --name '$CONTAINER_NAME' \$ENV_FILE_ARG -p '$HOST_PORT:$CONTAINER_PORT' '$CONTAINER_NAME:latest'
+            docker network create excitech-net || true
+            docker compose down || true
+            docker compose up -d --build
             docker image prune -f
           "
